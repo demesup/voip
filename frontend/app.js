@@ -82,19 +82,37 @@ function renderUsersList(users) {
         return;
     }
     
-    usersList.innerHTML = users.map(user => `
-        <div class="user-item ${user.status === 'offline' ? 'offline' : ''}">
-            <div>
-                <span class="user-name">${user.username}</span>
-                <span class="user-status ${user.status}"></span>
-            </div>
-            <span class="user-status-text">${user.status.toUpperCase()}</span>
-            <div class="user-item-actions">
+    usersList.innerHTML = users.map(user => {
+        const isInCall = appState.currentCallId && (appState.currentCallPartner === user.id || appState.callStartTime);
+        const isOffline = user.status === 'offline';
+        
+        let buttonHtml = '';
+        if (isInCall) {
+            buttonHtml = `<button class="btn btn-danger user-hangup-btn" data-user-id="${user.id}">Hang Up</button>`;
+        } else if (!isOffline && !appState.currentCallId) {
+            buttonHtml = `
                 <button class="btn btn-success user-accept-btn" data-user-id="${user.id}">Call</button>
-                ${user.status !== 'offline' ? `<button class="btn btn-secondary user-reject-btn" data-user-id="${user.id}">Block</button>` : ''}
+                <button class="btn btn-secondary user-reject-btn" data-user-id="${user.id}">Block</button>
+            `;
+        } else if (!isOffline && appState.currentCallId) {
+            buttonHtml = `<span class="user-busy">Busy</span>`;
+        }
+        
+        return `
+            <div class="user-item ${isOffline ? 'offline' : ''} ${isInCall ? 'in-call' : ''}">
+                <div class="user-info-section">
+                    <span class="user-name">${user.username}</span>
+                    <span class="user-status ${user.status}"></span>
+                </div>
+                <div class="user-status-right">
+                    <span class="user-status-text">${user.status.toUpperCase()}</span>
+                </div>
+                <div class="user-item-actions">
+                    ${buttonHtml}
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function updateUserSelect(users) {
@@ -187,6 +205,7 @@ async function rejectCall() {
         
         if (response.ok) {
             endCallCleanup();
+            await loadUsers();
         }
     } catch (error) {
     }
@@ -461,7 +480,9 @@ function setupEventListeners() {
             const userItem = e.target.closest('.user-item');
             const userName = userItem.querySelector('.user-name').textContent;
             alert(`${userName} has been blocked (feature coming soon)`);
-        } else if (e.target.closest('.user-item:not(.offline)')) {
+        } else if (e.target.closest('.user-hangup-btn')) {
+            endCall();
+        } else if (e.target.closest('.user-item:not(.offline)') && !e.target.closest('.user-item-actions')) {
             const userItem = e.target.closest('.user-item');
             const userName = userItem.querySelector('.user-name').textContent;
             document.getElementById('target-user').value = userName;

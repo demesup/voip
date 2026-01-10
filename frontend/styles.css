@@ -163,12 +163,20 @@ body {
 .user-item-actions {
     display: flex;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .user-item-actions button {
     padding: 5px 10px;
     font-size: 0.85em;
     min-width: auto;
+    white-space: nowrap;
+}
+
+.user-busy {
+    color: #fd7e14;
+    font-weight: bold;
+    font-size: 0.9em;
 }
 
 /* ============================================
@@ -193,6 +201,19 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 15px;
+}
+
+.user-info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    min-width: 0;
+}
+
+.user-status-right {
+    flex-shrink: 0;
 }
 
 .user-item:hover {
@@ -204,6 +225,12 @@ body {
 .user-item.offline {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.user-item.in-call {
+    background: #fff5e6;
+    border-color: var(--incall-color);
+    border-width: 2px;
 }
 
 .user-name {

@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(loadUsers, 5000);
     setInterval(updateCallTimer, 1000);
     setInterval(checkForIncomingCalls, 2000);
-    setInterval(checkCallAcceptance, 1000);
+    setInterval(checkCallAcceptance, 500); // Poll every 500ms for faster detection
 });
 
 window.addEventListener('beforeunload', async () => {
@@ -208,8 +208,10 @@ async function acceptCall() {
             document.getElementById('call-modal').classList.add('hidden');
             document.getElementById('current-call-info').classList.remove('hidden');
             requestAudioPermission();
+            console.log('✅ Call accepted locally, timer started');
         }
     } catch (error) {
+        console.log('acceptCall error:', error);
     }
 }
 
@@ -357,31 +359,50 @@ async function checkForIncomingCalls() {
 
 async function checkCallAcceptance() {
     // Only check if we're currently calling (waiting for acceptance)
-    if (!appState.currentCallId || appState.callStartTime) {
+    // Must have currentCallId but NOT have started the call yet (callStartTime)
+    const shouldCheck = appState.currentCallId && !appState.callStartTime;
+    
+    if (!shouldCheck) {
         return;
     }
     
     try {
         const response = await fetch(`${API_BASE}/signal/status?call_id=${appState.currentCallId}`);
+        
+        if (!response.ok) {
+            console.log('Call status check failed, status:', response.status);
+            return;
+        }
+        
         const data = await response.json();
         
+        console.log('checkCallAcceptance - callId:', appState.currentCallId, 'Response:', data);
+        
         if (data.status === 'success' && data.call) {
-            // Check if the call has been accepted (status is "incall" or "InCall")
-            const callStatus = data.call.status.toLowerCase();
+            const callStatus = String(data.call.status).toLowerCase();
+            console.log('Call status from server:', callStatus);
+            
             if (callStatus === 'incall') {
-                // Call has been accepted! Start the timer
+                console.log('🎯 Detected call accepted! Starting timer...');
+                
+                // Double-check that callStartTime hasn't already been set
                 if (!appState.callStartTime) {
                     appState.callStartTime = Date.now();
                     updateStatus('in-call');
+                    showCallControls();
                     document.getElementById('current-call-info').classList.remove('hidden');
+                    document.getElementById('call-modal').classList.add('hidden');
                     
-                    // Log for debugging
-                    console.log('Call accepted by callee, timer started');
+                    console.log('✅ Call acceptance detected - timer started, UI updated');
                 }
+            }
+        } else {
+            if (data.status !== 'success') {
+                console.log('Waiting for acceptance... (status=' + data.status + ')');
             }
         }
     } catch (error) {
-        // Silently handle errors
+        console.log('checkCallAcceptance error:', error.message);
     }
 }
 

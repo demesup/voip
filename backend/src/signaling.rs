@@ -23,7 +23,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .route("/signal/end", web::post().to(end_call))
         .route("/signal/hold", web::post().to(hold_call))
         .route("/signal/resume", web::post().to(resume_call))
-        .route("/signal/incoming", web::get().to(check_incoming_calls));
+        .route("/signal/incoming", web::get().to(check_incoming_calls))
+        .route("/signal/status", web::get().to(get_call_status));
 }
 
 async fn initiate_call(
@@ -173,6 +174,32 @@ async fn check_incoming_calls(
     } else {
         HttpResponse::Ok().json(serde_json::json!({
             "call": null
+        }))
+    }
+}
+
+async fn get_call_status(
+    call_manager: web::Data<Arc<Mutex<CallManager>>>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let call_id = query.get("call_id").map(|s| s.as_str()).unwrap_or("");
+    
+    let manager = call_manager.lock().await;
+    
+    if let Some(call) = manager.get_call(call_id) {
+        HttpResponse::Ok().json(serde_json::json!({
+            "status": "success",
+            "call": {
+                "call_id": call.call_id,
+                "caller_id": call.caller_id,
+                "callee_id": call.callee_id,
+                "status": call.status
+            }
+        }))
+    } else {
+        HttpResponse::NotFound().json(serde_json::json!({
+            "status": "error",
+            "message": "Call not found"
         }))
     }
 }

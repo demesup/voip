@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(loadUsers, 5000);
     setInterval(updateCallTimer, 1000);
     setInterval(checkForIncomingCalls, 2000);
+    setInterval(checkCallAcceptance, 1000);
 });
 
 window.addEventListener('beforeunload', async () => {
@@ -108,12 +109,15 @@ function renderUsersList(users) {
                 <span class="user-busy">Busy</span>
                 <button class="btn btn-secondary user-reject-btn" data-user-id="${user.id}">Block</button>
             `;
-        } else {
-            // Both users are idle - show call and block buttons
+        } else if (user.status === 'idle') {
+            // Only show call button if user is truly IDLE - not engaged in any call
             buttonHtml = `
                 <button class="btn btn-success user-accept-btn" data-user-id="${user.id}">Call</button>
                 <button class="btn btn-secondary user-reject-btn" data-user-id="${user.id}">Block</button>
             `;
+        } else {
+            // Fallback - no buttons
+            buttonHtml = '';
         }
         
         return `
@@ -348,6 +352,36 @@ async function checkForIncomingCalls() {
             simulateIncomingCall(caller);
         }
     } catch (error) {
+    }
+}
+
+async function checkCallAcceptance() {
+    // Only check if we're currently calling (waiting for acceptance)
+    if (!appState.currentCallId || appState.callStartTime) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/signal/status?call_id=${appState.currentCallId}`);
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.call) {
+            // Check if the call has been accepted (status is "incall" or "InCall")
+            const callStatus = data.call.status.toLowerCase();
+            if (callStatus === 'incall') {
+                // Call has been accepted! Start the timer
+                if (!appState.callStartTime) {
+                    appState.callStartTime = Date.now();
+                    updateStatus('in-call');
+                    document.getElementById('current-call-info').classList.remove('hidden');
+                    
+                    // Log for debugging
+                    console.log('Call accepted by callee, timer started');
+                }
+            }
+        }
+    } catch (error) {
+        // Silently handle errors
     }
 }
 

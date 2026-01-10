@@ -1,0 +1,54 @@
+# Rust build artifacts
+/backend/target/
+/backend/Cargo.lock
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# Build
+*.o
+*.a
+*.so
+*.dylib
+*.deb
+*.rpm
+*.exe
+*.dll
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+*.pem
+*.key
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Node (if used)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Testing
+coverage/
+.nyc_output/

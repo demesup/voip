@@ -34,6 +34,7 @@ async fn main() -> std::io::Result<()> {
                     .route("/health", web::get().to(health_check))
                     .route("/users/register", web::post().to(register_user))
                     .route("/users/list", web::get().to(list_users))
+                    .route("/users/disconnect", web::post().to(disconnect_user))
             )
             .service(web::scope("").configure(signaling::config))
     })
@@ -73,5 +74,22 @@ async fn list_users(
     
     actix_web::HttpResponse::Ok().json(serde_json::json!({
         "users": users
+    }))
+}
+
+async fn disconnect_user(
+    call_manager: web::Data<Arc<Mutex<CallManager>>>,
+    user_data: web::Json<serde_json::Value>,
+) -> actix_web::HttpResponse {
+    let user_id = user_data
+        .get("user_id")
+        .and_then(|u| u.as_str())
+        .unwrap_or("");
+    
+    let mut manager = call_manager.lock().await;
+    let success = manager.disconnect_user(user_id);
+    
+    actix_web::HttpResponse::Ok().json(serde_json::json!({
+        "success": success
     }))
 }

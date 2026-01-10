@@ -31,7 +31,20 @@ impl CallManager {
     }
 
     pub fn list_users(&self) -> Vec<User> {
-        self.users.values().cloned().collect()
+        self.users
+            .values()
+            .filter(|u| u.status != CallStatus::Offline)
+            .cloned()
+            .collect()
+    }
+
+    pub fn disconnect_user(&mut self, user_id: &str) -> bool {
+        if let Some(user) = self.users.get_mut(user_id) {
+            user.set_status(CallStatus::Offline);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn get_user(&self, user_id: &str) -> Option<&User> {

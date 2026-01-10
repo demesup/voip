@@ -33,6 +33,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(updateCallTimer, 1000); // Update call timer every second
 });
 
+// Disconnect user when leaving the page
+window.addEventListener('beforeunload', async () => {
+    if (appState.userId) {
+        try {
+            await fetch(`${API_BASE}/users/disconnect`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: appState.userId })
+            });
+        } catch (error) {
+            console.error('Failed to disconnect user:', error);
+        }
+    }
+});
+
 // ============================================
 // User Management
 // ============================================

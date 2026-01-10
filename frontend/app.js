@@ -2,7 +2,7 @@
 // VoIP Application - Frontend Application Logic
 // ============================================
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = 'http://localhost:5000/api';
 
 let appState = {
     userId: null,
@@ -61,7 +61,7 @@ async function initializeUser() {
         console.log('User registered:', data);
     } catch (error) {
         console.error('Failed to register user:', error);
-        alert('Failed to connect to server!');
+        alert(`Failed to connect to server!\n\nAPI URL: ${API_BASE}\nError: ${error.message}`);
     }
 }
 

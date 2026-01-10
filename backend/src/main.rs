@@ -15,7 +15,7 @@ async fn main() -> std::io::Result<()> {
     
     let call_manager = Arc::new(Mutex::new(CallManager::new()));
     
-    log::info!("Starting VoIP Server on 0.0.0.0:8080");
+    log::info!("Starting VoIP Server on 0.0.0.0:5000");
     
     HttpServer::new(move || {
         let call_manager = Arc::clone(&call_manager);
@@ -37,7 +37,7 @@ async fn main() -> std::io::Result<()> {
             )
             .service(web::scope("").configure(signaling::config))
     })
-    .bind("0.0.0.0:8080")?
+    .bind("0.0.0.0:5000")?
     .run()
     .await
 }

@@ -86,6 +86,7 @@ function renderUsersList(users) {
         const isCurrentUser = appState.currentCallPartner === user.id;
         const isOffline = user.status === 'offline';
         const currentUserStatus = appState.callStartTime ? 'in-call' : appState.currentCallId ? 'calling' : 'idle';
+        const userIsBusy = user.status === 'calling' || user.status === 'in-call' || user.status === 'on-hold';
         
         let buttonHtml = '';
         
@@ -96,10 +97,19 @@ function renderUsersList(users) {
             // The other party in current call - show hang up button
             buttonHtml = `<button class="btn btn-danger user-hangup-btn" data-user-id="${user.id}">Hang Up</button>`;
         } else if (currentUserStatus !== 'idle') {
-            // User is in a call with someone else - show busy for this user
-            buttonHtml = `<span class="user-busy">Busy</span>`;
+            // Current user is in a call - show busy with block button for other users
+            buttonHtml = `
+                <span class="user-busy">Busy</span>
+                <button class="btn btn-secondary user-reject-btn" data-user-id="${user.id}">Block</button>
+            `;
+        } else if (userIsBusy) {
+            // Other user is busy (calling/in-call/on-hold) - show busy with block button
+            buttonHtml = `
+                <span class="user-busy">Busy</span>
+                <button class="btn btn-secondary user-reject-btn" data-user-id="${user.id}">Block</button>
+            `;
         } else {
-            // User is idle - show call and block buttons
+            // Both users are idle - show call and block buttons
             buttonHtml = `
                 <button class="btn btn-success user-accept-btn" data-user-id="${user.id}">Call</button>
                 <button class="btn btn-secondary user-reject-btn" data-user-id="${user.id}">Block</button>
@@ -161,7 +171,6 @@ async function initiateCall(targetId, isIpCall = false) {
         if (data.status === 'success') {
             appState.currentCallId = data.call_id;
             appState.currentCallPartner = targetId;
-            appState.callStartTime = Date.now();
             
             updateStatus('calling');
             showCallControls();
@@ -237,10 +246,16 @@ async function endCall() {
         });
         
         if (response.ok) {
-            endCallCleanup();
-            await loadUsers();
+            const data = await response.json();
+            if (data.status === 'success') {
+                endCallCleanup();
+                await loadUsers();
+            }
+        } else {
+            console.error('Failed to end call');
         }
     } catch (error) {
+        console.error('Error ending call:', error);
     }
 }
 

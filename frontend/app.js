@@ -180,9 +180,11 @@ async function acceptCall() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            updateStatus('in-call');
-            document.getElementById('call-modal').classList.add('hidden');
             appState.callStartTime = Date.now();
+            updateStatus('in-call');
+            showCallControls();
+            document.getElementById('call-modal').classList.add('hidden');
+            document.getElementById('current-call-info').classList.remove('hidden');
             requestAudioPermission();
         }
     } catch (error) {
@@ -227,6 +229,7 @@ async function endCall() {
         
         if (response.ok) {
             endCallCleanup();
+            await loadUsers();
         }
     } catch (error) {
     }

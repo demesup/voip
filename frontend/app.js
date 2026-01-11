@@ -1,4 +1,4 @@
-const API_BASE = 'http://192.168.100.61:5000/api';
+const API_BASE = '/api';
 
 let appState = {
     userId: null,
@@ -9,11 +9,64 @@ let appState = {
     isOnHold: false,
     callStartTime: null,
     callDuration: 0,
-    localStream: null,
+    localIP: null,
     peerConnection: null,
+    localStream: null,
+    remoteStream: null,
 };
 
+const ICE_SERVERS = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+    ]
+};
+
+async function getLocalIP() {
+    try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        appState.localIP = data.ip;
+        console.log('Local IP detected:', appState.localIP);
+    } catch (error) {
+        console.log('Could not detect public IP, trying local IP...');
+        // Fallback: try to get local IP
+        try {
+            const pc = new RTCPeerConnection({iceServers: []});
+            pc.createDataChannel('');
+            pc.createOffer().then(offer => pc.setLocalDescription(offer));
+            
+            return new Promise((resolve) => {
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        const ip = event.candidate.candidate.split(' ')[4];
+                        if (ip && ip !== '127.0.0.1') {
+                            appState.localIP = ip;
+                            console.log('Local IP detected:', appState.localIP);
+                            pc.close();
+                            resolve();
+                        }
+                    }
+                };
+                
+                setTimeout(() => {
+                    if (!appState.localIP) {
+                        appState.localIP = '127.0.0.1'; // fallback
+                        console.log('Using fallback IP:', appState.localIP);
+                    }
+                    pc.close();
+                    resolve();
+                }, 2000);
+            });
+        } catch (e) {
+            appState.localIP = '127.0.0.1'; // ultimate fallback
+            console.log('Using ultimate fallback IP:', appState.localIP);
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    await getLocalIP();
     await initializeUser();
     await loadUsers();
     setupEventListeners();
@@ -54,6 +107,24 @@ window.addEventListener('beforeunload', async () => {
     }
 });
 
+async function checkIncomingCalls() {
+    if (!appState.userId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/signal/incoming?user_id=${appState.userId}`);
+        const data = await response.json();
+        
+        if (data.incoming_call && !appState.currentCallId) {
+            appState.currentCallId = data.call_id;
+            appState.currentCallPartner = data.caller_id;
+            document.getElementById('modal-caller-info').textContent = `Call from ${data.caller_username}`;
+            document.getElementById('call-modal').classList.remove('hidden');
+        }
+    } catch (error) {
+        // Ignore errors
+    }
+}
+
 async function initializeUser() {
     const username = prompt('Enter your name:', 'User_' + Math.floor(Math.random() * 1000));
     
@@ -74,6 +145,9 @@ async function initializeUser() {
         appState.username = data.username;
         
         document.getElementById('user-info').textContent = `Connected as: ${appState.username}`;
+        
+        // Start polling for incoming calls
+        setInterval(checkIncomingCalls, 1000);
     } catch (error) {
         alert(`Failed to connect to server!\n\nAPI URL: ${API_BASE}\nError: ${error.message}`);
     }
@@ -175,6 +249,21 @@ async function initiateCall(targetId, isIpCall = false) {
     }
     
     try {
+        // Get user media first
+        appState.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Create peer connection
+        appState.peerConnection = new RTCPeerConnection(ICE_SERVERS);
+        
+        // Add local stream to peer connection
+        appState.localStream.getTracks().forEach(track => {
+            appState.peerConnection.addTrack(track, appState.localStream);
+        });
+        
+        // Set up event handlers
+        setupPeerConnectionHandlers();
+        
+        // Initiate call via backend
         const response = await fetch(`${API_BASE}/signal/initiate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -182,7 +271,6 @@ async function initiateCall(targetId, isIpCall = false) {
                 message_type: 'initiate',
                 user_id: appState.userId,
                 target_user_id: targetId,
-                ip_address: isIpCall ? targetId : null
             })
         });
         
@@ -192,43 +280,202 @@ async function initiateCall(targetId, isIpCall = false) {
             appState.currentCallId = data.call_id;
             appState.currentCallPartner = targetId;
             
+            // Create offer
+            const offer = await appState.peerConnection.createOffer();
+            await appState.peerConnection.setLocalDescription(offer);
+            
+            // Send offer to backend
+            await fetch(`${API_BASE}/signal/offer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message_type: 'offer',
+                    user_id: appState.userId,
+                    call_id: appState.currentCallId,
+                    offer: offer.sdp,
+                })
+            });
+            
+            // Start polling for answer
+            pollForAnswer();
+            
             updateStatus('calling');
             showCallControls();
-            requestAudioPermission();
+            setupAudioVisualization();
         }
     } catch (error) {
-        alert('Failed to initiate call');
+        console.error('Failed to initiate call:', error);
+        alert('Failed to initiate call: ' + error.message);
     }
+}
+
+function setupPeerConnectionHandlers() {
+    appState.peerConnection.onicecandidate = async (event) => {
+        if (event.candidate) {
+            // Send ICE candidate to backend
+            await fetch(`${API_BASE}/signal/candidate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message_type: 'candidate',
+                    user_id: appState.userId,
+                    call_id: appState.currentCallId,
+                    candidate: event.candidate.candidate,
+                })
+            });
+        }
+    };
+    
+    appState.peerConnection.ontrack = (event) => {
+        // Set remote stream
+        appState.remoteStream = event.streams[0];
+        const remoteAudio = document.getElementById('remote-audio');
+        remoteAudio.srcObject = appState.remoteStream;
+    };
+    
+    appState.peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state:', appState.peerConnection.connectionState);
+        if (appState.peerConnection.connectionState === 'connected') {
+            updateStatus('in-call');
+        }
+    };
 }
 
 async function acceptCall() {
     if (!appState.currentCallId) return;
     
     try {
+        // Accept call via backend
         const response = await fetch(`${API_BASE}/signal/accept`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 message_type: 'accept',
                 user_id: appState.userId,
-                call_id: appState.currentCallId
+                call_id: appState.currentCallId,
             })
         });
         
         const data = await response.json();
         
         if (data.status === 'success') {
-            appState.callStartTime = Date.now();
-            updateStatus('in-call');
-            showCallControls();
-            document.getElementById('call-modal').classList.add('hidden');
-            document.getElementById('current-call-info').classList.remove('hidden');
-            requestAudioPermission();
-            console.log('✅ Call accepted locally, timer started');
+            // Get user media
+            appState.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // Create peer connection
+            appState.peerConnection = new RTCPeerConnection(ICE_SERVERS);
+            
+            // Add local stream
+            appState.localStream.getTracks().forEach(track => {
+                appState.peerConnection.addTrack(track, appState.localStream);
+            });
+            
+            // Set up event handlers
+            setupPeerConnectionHandlers();
+            
+            // Get offer from backend
+            const offerResponse = await fetch(`${API_BASE}/signal/get_offer?call_id=${appState.currentCallId}`);
+            const offerData = await offerResponse.json();
+            
+            if (offerData.status === 'success') {
+                // Set remote description
+                await appState.peerConnection.setRemoteDescription({
+                    type: 'offer',
+                    sdp: offerData.offer
+                });
+                
+                // Create answer
+                const answer = await appState.peerConnection.createAnswer();
+                await appState.peerConnection.setLocalDescription(answer);
+                
+                // Send answer to backend
+                await fetch(`${API_BASE}/signal/answer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message_type: 'answer',
+                        user_id: appState.userId,
+                        call_id: appState.currentCallId,
+                        answer: answer.sdp,
+                    })
+                });
+                
+                // Start polling for ICE candidates
+                pollForCandidates();
+                
+                appState.callStartTime = Date.now();
+                updateStatus('in-call');
+                showCallControls();
+                document.getElementById('call-modal').classList.add('hidden');
+                document.getElementById('current-call-info').classList.remove('hidden');
+                setupAudioVisualization();
+                console.log('✅ Call accepted, WebRTC connection established');
+            }
         }
     } catch (error) {
         console.log('acceptCall error:', error);
     }
+}
+
+async function pollForCandidates() {
+    const pollInterval = setInterval(async () => {
+        if (!appState.currentCallId) {
+            clearInterval(pollInterval);
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE}/signal/get_candidates?call_id=${appState.currentCallId}&user_id=${appState.userId}`);
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.candidates) {
+                for (const candidateStr of data.candidates) {
+                    await appState.peerConnection.addIceCandidate({
+                        candidate: candidateStr,
+                        sdpMLineIndex: 0,
+                        sdpMid: '0'
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error polling candidates:', error);
+        }
+    }, 1000);
+    
+    // Stop polling after 30 seconds
+    setTimeout(() => clearInterval(pollInterval), 30000);
+}
+
+async function pollForAnswer() {
+    const pollInterval = setInterval(async () => {
+        if (!appState.currentCallId) {
+            clearInterval(pollInterval);
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE}/signal/get_answer?call_id=${appState.currentCallId}`);
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Set remote description
+                await appState.peerConnection.setRemoteDescription({
+                    type: 'answer',
+                    sdp: data.answer
+                });
+                
+                // Start polling for ICE candidates
+                pollForCandidates();
+                
+                clearInterval(pollInterval);
+            }
+        } catch (error) {
+            console.error('Error polling answer:', error);
+        }
+    }, 1000);
+    
+    // Stop polling after 30 seconds
+    setTimeout(() => clearInterval(pollInterval), 30000);
 }
 
 async function rejectCall() {
@@ -263,7 +510,8 @@ async function endCall() {
             body: JSON.stringify({
                 message_type: 'end',
                 user_id: appState.userId,
-                call_id: appState.currentCallId
+                call_id: appState.currentCallId,
+                ip_address: appState.localIP
             })
         });
         
@@ -312,6 +560,7 @@ async function holdCall() {
 function toggleMute() {
     appState.isMuted = !appState.isMuted;
     
+    // Mute/unmute local audio tracks
     if (appState.localStream) {
         appState.localStream.getAudioTracks().forEach(track => {
             track.enabled = !appState.isMuted;
@@ -321,6 +570,8 @@ function toggleMute() {
     const muteBtn = document.getElementById('mute-btn');
     muteBtn.classList.toggle('active', appState.isMuted);
     muteBtn.textContent = appState.isMuted ? 'Unmute' : 'Mute';
+    
+    console.log('Mute toggled:', appState.isMuted);
 }
 
 function endCallCleanup() {
@@ -335,15 +586,22 @@ function endCallCleanup() {
     document.getElementById('call-timer').textContent = '00:00';
     document.getElementById('call-duration').textContent = 'Duration: 00:00';
     
+    // Close WebRTC connection
+    if (appState.peerConnection) {
+        appState.peerConnection.close();
+        appState.peerConnection = null;
+    }
+    
+    // Stop local media stream
     if (appState.localStream) {
         appState.localStream.getTracks().forEach(track => track.stop());
         appState.localStream = null;
     }
     
-    if (appState.peerConnection) {
-        appState.peerConnection.close();
-        appState.peerConnection = null;
-    }
+    // Clear remote audio
+    const remoteAudio = document.getElementById('remote-audio');
+    remoteAudio.srcObject = null;
+    appState.remoteStream = null;
     
     updateStatus('idle');
     hideCallControls();
@@ -486,87 +744,66 @@ async function getUserName(userId) {
 }
 
 async function requestAudioPermission() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true, 
-            video: false 
-        });
-        appState.localStream = stream;
-        
-        const localAudio = document.getElementById('local-audio');
-        localAudio.srcObject = stream;
-        
-        setupAudioAnalyzer(stream);
-    } catch (error) {
-        alert('Microphone access is required for calls');
-    }
+    // WebRTC handles microphone access
+    console.log('WebRTC mode: microphone access handled by getUserMedia');
 }
 
 let audioContext, analyser, dataArray, animationId;
 
-function setupAudioAnalyzer(stream) {
+function setupAudioVisualization() {
     if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
     
-    const source = audioContext.createMediaStreamSource(stream);
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 256;
-    
-    source.connect(analyser);
     dataArray = new Uint8Array(analyser.frequencyBinCount);
     
-    visualizeAudio();
+    // Connect to local stream for visualization
+    if (appState.localStream) {
+        const source = audioContext.createMediaStreamSource(appState.localStream);
+        source.connect(analyser);
+        startVisualization();
+    }
 }
 
-function visualizeAudio() {
-    if (appState.currentCallId && analyser) {
+function startVisualization() {
+    const canvas = document.getElementById('audio-canvas');
+    const ctx = canvas.getContext('2d');
+    const audioLevel = document.getElementById('audio-level');
+    
+    function draw() {
+        if (!analyser) return;
+        
         analyser.getByteFrequencyData(dataArray);
         
-        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        const level = Math.round((average / 255) * 100);
-        document.getElementById('audio-level').style.width = level + '%';
-        document.getElementById('audio-status').textContent = level > 10 ? 'Active' : 'Quiet';
+        // Calculate average volume
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        const volume = average / 255;
         
-        drawAudioVisualization();
+        // Update audio level bar
+        audioLevel.style.width = `${volume * 100}%`;
+        
+        // Draw waveform
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#4CAF50';
+        
+        const barWidth = canvas.width / dataArray.length;
+        for (let i = 0; i < dataArray.length; i++) {
+            const barHeight = (dataArray[i] / 255) * canvas.height;
+            ctx.fillRect(i * barWidth, canvas.height - barHeight, barWidth - 1, barHeight);
+        }
+        
+        animationId = requestAnimationFrame(draw);
     }
     
-    animationId = requestAnimationFrame(visualizeAudio);
+    draw();
 }
-
-function setupAudioVisualization() {
-    const canvas = document.getElementById('audio-canvas');
-    const ctx = canvas.getContext('2d');
     
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-}
-
-function drawAudioVisualization() {
-    const canvas = document.getElementById('audio-canvas');
-    const ctx = canvas.getContext('2d');
-    
-    ctx.fillStyle = '#f8f9fa';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    if (!analyser || !dataArray) return;
-    
-    analyser.getByteFrequencyData(dataArray);
-    
-    const barWidth = (canvas.width / dataArray.length) * 2.5;
-    let barHeight, x = 0;
-    
-    for (let i = 0; i < dataArray.length; i++) {
-        barHeight = (dataArray[i] / 255) * canvas.height;
-        
-        const hue = (i / dataArray.length) * 360;
-        ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-        
-        x += barWidth + 1;
-    }
-}
-
 function updateStatus(status) {
     const badge = document.getElementById('status-badge');
     badge.className = 'status-badge ' + status;

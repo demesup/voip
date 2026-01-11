@@ -9,6 +9,10 @@ pub struct Call {
     pub callee_id: String,
     pub status: CallStatus,
     pub timestamp: i64,
+    pub offer: Option<String>,
+    pub answer: Option<String>,
+    pub caller_candidates: Vec<String>,
+    pub callee_candidates: Vec<String>,
 }
 
 pub struct CallManager {
@@ -77,6 +81,10 @@ impl CallManager {
             callee_id: callee_id.clone(),
             status: CallStatus::Calling,
             timestamp: chrono::Local::now().timestamp(),
+            offer: None,
+            answer: None,
+            caller_candidates: Vec::new(),
+            callee_candidates: Vec::new(),
         };
         
         self.calls.insert(call_id, call.clone());
@@ -131,6 +139,28 @@ impl CallManager {
 
     pub fn get_call(&self, call_id: &str) -> Option<&Call> {
         self.calls.get(call_id)
+    }
+
+    pub fn set_offer(&mut self, call_id: &str, offer: String) {
+        if let Some(call) = self.calls.get_mut(call_id) {
+            call.offer = Some(offer);
+        }
+    }
+
+    pub fn set_answer(&mut self, call_id: &str, answer: String) {
+        if let Some(call) = self.calls.get_mut(call_id) {
+            call.answer = Some(answer);
+        }
+    }
+
+    pub fn add_candidate(&mut self, call_id: &str, candidate: String, is_caller: bool) {
+        if let Some(call) = self.calls.get_mut(call_id) {
+            if is_caller {
+                call.caller_candidates.push(candidate);
+            } else {
+                call.callee_candidates.push(candidate);
+            }
+        }
     }
 
     pub fn get_incoming_calls(&self, user_id: &str) -> Vec<Call> {

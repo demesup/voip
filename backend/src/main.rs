@@ -1,27 +1,64 @@
+mod audio_udp;
 mod call_manager;
+mod io;
+mod jitter;
+mod packet;
 mod signaling;
 mod user;
 
 use actix_web::{web, App, HttpServer, middleware::Logger};
 use actix_cors::Cors;
+use actix_files::Files;
+use audio_udp::UdpCommand;
 use call_manager::CallManager;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use env_logger::Env;
+use rustls::{Certificate, PrivateKey};
+use rustls_pemfile::{certs, pkcs8_private_keys};
+use std::fs::File;
+use std::io::BufReader;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    
+
+    // Load TLS certificates
+    let mut cert_file = BufReader::new(File::open("cert.pem").expect("cert.pem not found. Run generate_cert.py first."));
+    let mut key_file = BufReader::new(File::open("key.pem").expect("key.pem not found. Run generate_cert.py first."));
+    let cert_chain = certs(&mut cert_file).expect("Failed to load certs").into_iter().map(Certificate).collect::<Vec<_>>();
+    let mut keys = pkcs8_private_keys(&mut key_file).expect("Failed to load keys").into_iter().map(PrivateKey).collect::<Vec<_>>();
+    let config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(cert_chain, keys.remove(0)).expect("Failed to create TLS config");
+
     let call_manager = Arc::new(Mutex::new(CallManager::new()));
-    
+
+    // Create UDP command channel
+    let (udp_tx, udp_rx) = mpsc::channel::<UdpCommand>(32);
+
+    // Spawn UDP audio task
+    let call_manager_clone = Arc::clone(&call_manager);
+    log::info!("Spawning UDP audio task...");
+    tokio::spawn(async move {
+        log::info!("UDP audio task started");
+        if let Err(e) = audio_udp::udp_audio_task(call_manager_clone, udp_rx).await {
+            log::error!("UDP audio task failed: {}", e);
+        }
+    });
+    log::info!("UDP audio task spawned");
+
     log::info!("Starting VoIP Server on 0.0.0.0:5000");
     
     HttpServer::new(move || {
         let call_manager = Arc::clone(&call_manager);
-        
+        let udp_tx_clone = udp_tx.clone();
+        let udp_tx_clone2 = udp_tx.clone();
+
         App::new()
             .app_data(web::Data::new(call_manager))
+            .app_data(web::Data::new(udp_tx_clone))
             .wrap(Logger::default())
             .wrap(
                 Cors::default()
@@ -37,10 +74,15 @@ async fn main() -> std::io::Result<()> {
                     .route("/users/get", web::get().to(get_user))
                     .route("/users/disconnect", web::post().to(disconnect_user))
                     .route("/users/heartbeat", web::post().to(user_heartbeat))
-                    .service(web::scope("").configure(signaling::config))
+                    .service(
+                        web::scope("")
+                            .app_data(udp_tx_clone2)
+                            .configure(signaling::config_with_udp_sender)
+                    )
             )
+            .service(Files::new("/", "../frontend").index_file("index.html"))
     })
-    .bind("0.0.0.0:5000")?
+    .bind_rustls("0.0.0.0:5000", config)?
     .run()
     .await
 }

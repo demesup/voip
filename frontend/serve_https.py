@@ -10,7 +10,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 import datetime
 
-# Change to the directory of this script
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 PORT = 3000
@@ -23,12 +22,10 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         super().end_headers()
 
-# Generate self-signed certificate using cryptography
 def generate_self_signed_cert():
     import socket
     import ipaddress
 
-    # Get local IP
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -38,14 +35,12 @@ def generate_self_signed_cert():
     finally:
         s.close()
 
-    # Generate private key
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048,
         backend=default_backend()
     )
 
-    # Create certificate
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
         x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "State"),
@@ -75,7 +70,6 @@ def generate_self_signed_cert():
         critical=False,
     ).sign(private_key, hashes.SHA256(), default_backend())
 
-    # Write private key
     with open("key.pem", "wb") as f:
         f.write(private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -83,7 +77,6 @@ def generate_self_signed_cert():
             encryption_algorithm=serialization.NoEncryption()
         ))
 
-    # Write certificate
     with open("cert.pem", "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 
@@ -95,10 +88,10 @@ except ImportError:
     print("cryptography module not installed. Install with: pip install cryptography")
     exit(1)
 
-# Create server
 with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
-    # Wrap with SSL
-    httpd.socket = ssl.wrap_socket(httpd.socket, keyfile="key.pem", certfile="cert.pem", server_side=True)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
     print(f"Serving HTTPS on port {PORT}")
     print("Note: You may need to accept the self-signed certificate in your browser.")
     print("Access at: https://localhost:3000 or https://<your-ip>:3000")

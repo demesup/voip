@@ -189,7 +189,7 @@ impl CallManager {
             .collect();
 
         for user_id in inactive_user_ids {
-            // End any active calls for this user
+           
             let active_calls: Vec<String> = self.calls
                 .values()
                 .filter(|c| c.caller_id == user_id || c.callee_id == user_id)
@@ -200,7 +200,7 @@ impl CallManager {
                 self.end_call(&call_id);
             }
 
-            // Mark user as offline
+           
             self.disconnect_user(&user_id);
             disconnected_users.push(user_id);
         }

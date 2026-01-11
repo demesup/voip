@@ -53,7 +53,7 @@ pub async fn udp_audio_task(
 
     let (tx_caller, mut rx_caller) = mpsc::channel::<IpAddr>(1);
 
-    // Spawn receive task
+   
     {
         let socket_recv = socket.clone();
         let jitter_recv = jitter.clone();
@@ -113,14 +113,14 @@ pub async fn udp_audio_task(
                                     send_handle,
                                 });
 
-                                // Start audio in a separate thread to avoid Send issues
+                               
                                 let tx_audio_clone = tx_audio.clone();
                                 let jitter_clone = jitter.clone();
                                 std::thread::spawn(move || {
                                     let host = cpal::default_host();
                                     let mut audio_state = AudioState::new(host);
                                     audio_state.start(tx_audio_clone, jitter_clone);
-                                    // Keep audio alive until dropped
+                                   
                                     loop {
                                         std::thread::sleep(std::time::Duration::from_secs(1));
                                     }
@@ -167,13 +167,13 @@ async fn send_task(
         match audio_channel.try_recv() {
             Ok(data) => {
                 if let Some(packet) = AudioPacket::deserialize(&data) {
-                    // Calculate audio level
+                   
                     let max_sample = packet.samples.iter().map(|s| s.abs()).max().unwrap_or(0);
-                    let is_silence = max_sample < 100; // Threshold for silence
+                    let is_silence = max_sample < 100;
 
                     packet_count += 1;
 
-                    // Log every second
+                   
                     if last_log.elapsed().as_secs() >= 1 {
                         log::info!("📤 Sent {} packets to {} | Seq: {} | Samples: {} | Max: {} | {}",
                             packet_count,
@@ -190,7 +190,7 @@ async fn send_task(
                 let _ = socket.send_to(&data, target_addr).await;
             }
             Err(_) => {
-                // No data available, sleep briefly
+               
                 tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
             }
         }
@@ -215,24 +215,24 @@ async fn receive_task(
         tokio::select! {
             recv = socket.recv_from(&mut buf) => {
                 if let Ok((size, addr)) = recv {
-                    // Ignore packets from self to prevent echo
+                   
                     if addr.ip() == local_ip {
                         continue;
                     }
 
                     if let Some(packet) = AudioPacket::deserialize(&buf[..size]) {
                         if packet.seq == 0 {
-                            // Ping packet
+                           
                             log::info!("📡 Received ping from {}", addr);
                             let _ = tx_caller.send(addr.ip()).await;
                         } else {
-                            // Calculate audio level
+                           
                             let max_sample = packet.samples.iter().map(|s| s.abs()).max().unwrap_or(0);
                             let is_silence = max_sample < 100;
 
                             packet_count += 1;
 
-                            // Handle packet loss by inserting silence
+                           
                             if last_seq != 0 && packet.seq > last_seq + 1 {
                                 let missing = (packet.seq - last_seq - 1) as usize;
                                 lost_packet_count += missing as u64;
@@ -250,7 +250,7 @@ async fn receive_task(
 
                             last_seq = packet.seq;
 
-                            // Log every second
+                           
                             if last_log.elapsed().as_secs() >= 1 {
                                 let loss_rate = if packet_count > 0 {
                                     (lost_packet_count as f32 / (packet_count + lost_packet_count) as f32) * 100.0

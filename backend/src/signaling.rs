@@ -66,7 +66,7 @@ async fn accept_call(
     if let Some(call_id) = &msg.call_id {
         manager.accept_call(call_id);
         
-        // Send UDP command to start audio transmission
+       
         if let Some(ip_str) = &msg.ip_address {
             if let Ok(target_ip) = ip_str.parse::<std::net::IpAddr>() {
                 let udp_command = UdpCommand {
@@ -85,7 +85,7 @@ async fn accept_call(
             }
         }
         
-        // Get the updated call to return its status
+       
         if let Some(call) = manager.get_call(call_id) {
             HttpResponse::Ok().json(serde_json::json!({
                 "status": "success",
@@ -142,7 +142,7 @@ async fn end_call(
     if let Some(call_id) = &msg.call_id {
         manager.end_call(call_id);
         
-        // Send UDP command to stop audio transmission
+       
         if let Some(ip_str) = &msg.ip_address {
             if let Ok(target_ip) = ip_str.parse::<std::net::IpAddr>() {
                 let udp_command = UdpCommand {

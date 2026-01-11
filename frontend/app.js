@@ -32,7 +32,7 @@ async function getLocalIP() {
         console.log('Local IP detected:', appState.localIP);
     } catch (error) {
         console.log('Could not detect public IP, trying local IP...');
-        // Fallback: try to get local IP
+       
         try {
             const pc = new RTCPeerConnection({iceServers: []});
             pc.createDataChannel('');
@@ -53,7 +53,7 @@ async function getLocalIP() {
                 
                 setTimeout(() => {
                     if (!appState.localIP) {
-                        appState.localIP = '127.0.0.1'; // fallback
+                        appState.localIP = '127.0.0.1';
                         console.log('Using fallback IP:', appState.localIP);
                     }
                     pc.close();
@@ -61,7 +61,7 @@ async function getLocalIP() {
                 }, 2000);
             });
         } catch (e) {
-            appState.localIP = '127.0.0.1'; // ultimate fallback
+            appState.localIP = '127.0.0.1';
             console.log('Using ultimate fallback IP:', appState.localIP);
         }
     }
@@ -77,15 +77,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(loadUsers, 5000);
     setInterval(updateCallTimer, 1000);
     setInterval(checkForIncomingCalls, 2000);
-    setInterval(checkCallAcceptance, 500); // Poll every 500ms for faster detection
-    setInterval(checkIfCallEnded, 1000); // Poll to detect if other party hung up
-    setInterval(sendHeartbeat, 3000); // Send heartbeat every 3 seconds
+    setInterval(checkCallAcceptance, 500);
+    setInterval(checkIfCallEnded, 1000);
+    setInterval(sendHeartbeat, 3000);
 });
 
 window.addEventListener('beforeunload', async () => {
     if (appState.userId) {
         try {
-            // End call if one is active
+           
             if (appState.currentCallId) {
                 await fetch(`${API_BASE}/signal/end`, {
                     method: 'POST',
@@ -98,7 +98,7 @@ window.addEventListener('beforeunload', async () => {
                 });
             }
             
-            // Disconnect user
+           
             await fetch(`${API_BASE}/users/disconnect`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -123,7 +123,7 @@ async function checkIncomingCalls() {
             document.getElementById('call-modal').classList.remove('hidden');
         }
     } catch (error) {
-        // Ignore errors
+       
     }
 }
 
@@ -148,7 +148,7 @@ async function initializeUser() {
         
         document.getElementById('user-info').textContent = `Connected as: ${appState.username}`;
         
-        // Start polling for incoming calls
+       
         setInterval(checkIncomingCalls, 1000);
     } catch (error) {
         console.error(`Failed to connect to server! API URL: ${API_BASE}, Error: ${error.message}`);
@@ -184,22 +184,22 @@ function renderUsersList(users) {
         let buttonHtml = '';
         
         if (isOffline) {
-            // Offline users have no buttons
+           
             buttonHtml = '';
         } else if (isCurrentUser) {
-            // The other party in current call - show hang up button
+           
             buttonHtml = `<button class="btn btn-danger user-hangup-btn" data-user-id="${user.id}">Hang Up</button>`;
         } else if (currentUserStatus !== 'idle') {
-            // Current user is in a call - show busy
+           
             buttonHtml = `<span class="user-busy">Busy</span>`;
         } else if (userIsBusy) {
-            // Other user is busy (calling/in-call/on-hold) - show busy
+           
             buttonHtml = `<span class="user-busy">Busy</span>`;
         } else if (user.status === 'idle') {
-            // Only show call button if user is truly IDLE - not engaged in any call
+           
             buttonHtml = `<button class="btn btn-success user-accept-btn" data-user-id="${user.id}">Call</button>`;
         } else {
-            // Fallback - no buttons
+           
             buttonHtml = '';
         }
         
@@ -242,21 +242,21 @@ async function initiateCall(targetId, isIpCall = false) {
     }
     
     try {
-        // Get user media first
+       
         appState.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
-        // Create peer connection
+       
         appState.peerConnection = new RTCPeerConnection(ICE_SERVERS);
         
-        // Add local stream to peer connection
+       
         appState.localStream.getTracks().forEach(track => {
             appState.peerConnection.addTrack(track, appState.localStream);
         });
         
-        // Set up event handlers
+       
         setupPeerConnectionHandlers();
         
-        // Initiate call via backend
+       
         const response = await fetch(`${API_BASE}/signal/initiate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -273,11 +273,11 @@ async function initiateCall(targetId, isIpCall = false) {
             appState.currentCallId = data.call_id;
             appState.currentCallPartner = targetId;
             
-            // Create offer
+           
             const offer = await appState.peerConnection.createOffer();
             await appState.peerConnection.setLocalDescription(offer);
             
-            // Send offer to backend
+           
             await fetch(`${API_BASE}/signal/offer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -289,7 +289,7 @@ async function initiateCall(targetId, isIpCall = false) {
                 })
             });
             
-            // Start polling for answer
+           
             pollForAnswer();
             
             updateStatus('calling');
@@ -306,7 +306,7 @@ async function initiateCall(targetId, isIpCall = false) {
 function setupPeerConnectionHandlers() {
     appState.peerConnection.onicecandidate = async (event) => {
         if (event.candidate) {
-            // Send ICE candidate to backend
+           
             await fetch(`${API_BASE}/signal/candidate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -321,7 +321,7 @@ function setupPeerConnectionHandlers() {
     };
     
     appState.peerConnection.ontrack = (event) => {
-        // Set remote stream
+       
         appState.remoteStream = event.streams[0];
         const remoteAudio = document.getElementById('remote-audio');
         remoteAudio.srcObject = appState.remoteStream;
@@ -330,7 +330,7 @@ function setupPeerConnectionHandlers() {
     appState.peerConnection.onconnectionstatechange = () => {
         console.log('Connection state:', appState.peerConnection.connectionState);
         if (appState.peerConnection.connectionState === 'connected') {
-            // Start the call timer when connection is established
+           
             if (!appState.callStartTime) {
                 appState.callStartTime = Date.now();
                 console.log('✅ Call connected, timer started');
@@ -344,7 +344,7 @@ async function acceptCall() {
     if (!appState.currentCallId) return;
     
     try {
-        // Accept call via backend
+       
         const response = await fetch(`${API_BASE}/signal/accept`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -358,36 +358,36 @@ async function acceptCall() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            // Get user media
+           
             appState.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
-            // Create peer connection
+           
             appState.peerConnection = new RTCPeerConnection(ICE_SERVERS);
             
-            // Add local stream
+           
             appState.localStream.getTracks().forEach(track => {
                 appState.peerConnection.addTrack(track, appState.localStream);
             });
             
-            // Set up event handlers
+           
             setupPeerConnectionHandlers();
             
-            // Get offer from backend
+           
             const offerResponse = await fetch(`${API_BASE}/signal/get_offer?call_id=${appState.currentCallId}`);
             const offerData = await offerResponse.json();
             
             if (offerData.status === 'success') {
-                // Set remote description
+               
                 await appState.peerConnection.setRemoteDescription({
                     type: 'offer',
                     sdp: offerData.offer
                 });
                 
-                // Create answer
+               
                 const answer = await appState.peerConnection.createAnswer();
                 await appState.peerConnection.setLocalDescription(answer);
                 
-                // Send answer to backend
+               
                 await fetch(`${API_BASE}/signal/answer`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -399,10 +399,10 @@ async function acceptCall() {
                     })
                 });
                 
-                // Start polling for ICE candidates
+               
                 pollForCandidates();
                 
-                // Don't start timer here - wait for WebRTC connection
+               
                 updateStatus('connecting');
                 showCallControls();
                 document.getElementById('call-modal').classList.add('hidden');
@@ -441,7 +441,7 @@ async function pollForCandidates() {
         }
     }, 1000);
     
-    // Stop polling after 30 seconds
+   
     setTimeout(() => clearInterval(pollInterval), 30000);
 }
 
@@ -457,16 +457,16 @@ async function pollForAnswer() {
             const data = await response.json();
             
             if (data.status === 'success') {
-                // Set remote description
+               
                 await appState.peerConnection.setRemoteDescription({
                     type: 'answer',
                     sdp: data.answer
                 });
                 
-                // Start polling for ICE candidates
+               
                 pollForCandidates();
                 
-                // Update status to connecting while WebRTC establishes
+               
                 updateStatus('connecting');
                 console.log('✅ Received answer, establishing WebRTC connection...');
                 
@@ -477,7 +477,7 @@ async function pollForAnswer() {
         }
     }, 1000);
     
-    // Stop polling after 30 seconds
+   
     setTimeout(() => clearInterval(pollInterval), 30000);
 }
 
@@ -538,20 +538,20 @@ async function holdCall() {
     appState.isOnHold = !appState.isOnHold;
     
     if (appState.isOnHold) {
-        // Pause the timer and save when hold started
+       
         if (appState.callStartTime) {
             appState.pausedDuration = Math.floor((Date.now() - appState.callStartTime) / 1000);
             appState.holdStartTime = Date.now();
         }
         
-        // Mute local audio tracks during hold
+       
         if (appState.localStream) {
             appState.localStream.getAudioTracks().forEach(track => {
                 track.enabled = false;
             });
         }
         
-        // Disable remote audio playback
+       
         const remoteAudio = document.getElementById('remote-audio');
         if (remoteAudio) {
             remoteAudio.muted = true;
@@ -559,21 +559,21 @@ async function holdCall() {
         
         console.log('📴 Call on hold - audio paused, timer paused');
     } else {
-        // Resume: adjust call start time to account for hold duration
+       
         if (appState.holdStartTime) {
             const holdDuration = Math.floor((Date.now() - appState.holdStartTime) / 1000);
             appState.callStartTime = Date.now() - (appState.pausedDuration * 1000);
             appState.holdStartTime = null;
         }
         
-        // Unmute local audio tracks
+       
         if (appState.localStream && !appState.isMuted) {
             appState.localStream.getAudioTracks().forEach(track => {
                 track.enabled = true;
             });
         }
         
-        // Enable remote audio playback
+       
         const remoteAudio = document.getElementById('remote-audio');
         if (remoteAudio) {
             remoteAudio.muted = false;
@@ -610,7 +610,7 @@ async function holdCall() {
 function toggleMute() {
     appState.isMuted = !appState.isMuted;
     
-    // Mute/unmute local audio tracks
+   
     if (appState.localStream) {
         appState.localStream.getAudioTracks().forEach(track => {
             track.enabled = !appState.isMuted;
@@ -634,23 +634,23 @@ function endCallCleanup() {
     appState.pausedDuration = 0;
     appState.holdStartTime = null;
     
-    // Reset the timer display
+   
     document.getElementById('call-timer').textContent = '00:00';
     document.getElementById('call-duration').textContent = 'Duration: 00:00';
     
-    // Close WebRTC connection
+   
     if (appState.peerConnection) {
         appState.peerConnection.close();
         appState.peerConnection = null;
     }
     
-    // Stop local media stream
+   
     if (appState.localStream) {
         appState.localStream.getTracks().forEach(track => track.stop());
         appState.localStream = null;
     }
     
-    // Clear remote audio
+   
     const remoteAudio = document.getElementById('remote-audio');
     remoteAudio.srcObject = null;
     appState.remoteStream = null;
@@ -688,8 +688,8 @@ async function checkForIncomingCalls() {
 }
 
 async function checkCallAcceptance() {
-    // Only check if we're currently calling (waiting for acceptance)
-    // Must have currentCallId but NOT have started the call yet (callStartTime)
+   
+   
     const shouldCheck = appState.currentCallId && !appState.callStartTime;
     
     if (!shouldCheck) {
@@ -712,11 +712,11 @@ async function checkCallAcceptance() {
             const callStatus = String(data.call.status).toLowerCase().trim();
             console.log('Call status from server:', callStatus, '(type:', typeof callStatus, ')');
             
-            // The backend serializes CallStatus::InCall as "InCall", compare case-insensitively
+           
             if (callStatus === 'incall') {
                 console.log('🎯 Detected call accepted! Starting timer...');
                 
-                // Double-check that callStartTime hasn't already been set
+               
                 if (!appState.callStartTime) {
                     appState.callStartTime = Date.now();
                     updateStatus('in-call');
@@ -738,7 +738,7 @@ async function checkCallAcceptance() {
 }
 
 async function checkIfCallEnded() {
-    // Only check if we're currently in a call
+   
     if (!appState.currentCallId) {
         return;
     }
@@ -747,7 +747,7 @@ async function checkIfCallEnded() {
         const response = await fetch(`${API_BASE}/signal/status?call_id=${appState.currentCallId}`);
         
         if (!response.ok) {
-            // If the call is not found (404), it means it was ended
+           
             if (response.status === 404) {
                 console.log('🔴 Detected call was ended by other party');
                 endCallCleanup();
@@ -758,17 +758,17 @@ async function checkIfCallEnded() {
         
         const data = await response.json();
         
-        // If we get an error status, the call no longer exists
+       
         if (data.status === 'error' || !data.call) {
             console.log('🔴 Call no longer exists on server');
             endCallCleanup();
             await loadUsers();
         } else if (data.call) {
-            // Check if the other user put the call on hold
+           
             const serverStatus = String(data.call.status).toLowerCase().trim();
             if (serverStatus === 'onhold' && !appState.isOnHold) {
                 console.log('📴 Other user put call on hold');
-                // Mirror the hold state locally
+               
                 appState.isOnHold = true;
                 if (appState.callStartTime) {
                     appState.pausedDuration = Math.floor((Date.now() - appState.callStartTime) / 1000);
@@ -784,7 +784,7 @@ async function checkIfCallEnded() {
                 }
             } else if (serverStatus === 'incall' && appState.isOnHold) {
                 console.log('📞 Other user resumed call');
-                // Mirror the resume state locally
+               
                 appState.isOnHold = false;
                 if (appState.holdStartTime && appState.callStartTime) {
                     appState.callStartTime = Date.now() - (appState.pausedDuration * 1000);
@@ -832,7 +832,7 @@ async function getUserName(userId) {
 }
 
 async function requestAudioPermission() {
-    // WebRTC handles microphone access
+   
     console.log('WebRTC mode: microphone access handled by getUserMedia');
 }
 
@@ -847,7 +847,7 @@ function setupAudioVisualization() {
     analyser.fftSize = 256;
     dataArray = new Uint8Array(analyser.frequencyBinCount);
     
-    // Connect to local stream for visualization
+   
     if (appState.localStream) {
         const source = audioContext.createMediaStreamSource(appState.localStream);
         source.connect(analyser);
@@ -865,7 +865,7 @@ function startVisualization() {
         
         analyser.getByteFrequencyData(dataArray);
         
-        // Calculate average volume
+       
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) {
             sum += dataArray[i];
@@ -873,10 +873,10 @@ function startVisualization() {
         const average = sum / dataArray.length;
         const volume = average / 255;
         
-        // Update audio level bar
+       
         audioLevel.style.width = `${volume * 100}%`;
         
-        // Draw waveform
+       
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#4CAF50';
         
@@ -909,7 +909,7 @@ function hideCallControls() {
 }
 
 function updateCallTimer() {
-    // Only update timer if call is active and not on hold
+   
     if (appState.callStartTime && !appState.isOnHold) {
         appState.callDuration = Math.floor((Date.now() - appState.callStartTime) / 1000);
         const minutes = Math.floor(appState.callDuration / 60);
@@ -919,7 +919,7 @@ function updateCallTimer() {
         document.getElementById('call-timer').textContent = timeStr;
         document.getElementById('call-duration').textContent = `Duration: ${timeStr}`;
     } else if (appState.isOnHold && appState.pausedDuration >= 0) {
-        // Show paused time when on hold
+       
         const minutes = Math.floor(appState.pausedDuration / 60);
         const seconds = appState.pausedDuration % 60;
         const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')} (PAUSED)`;

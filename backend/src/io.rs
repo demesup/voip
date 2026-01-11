@@ -37,7 +37,7 @@ impl AudioState {
 
         let input_device = self.host.default_input_device();
 
-        // Check if input and output devices are the same to prevent echo
+       
         if let Some(ref input_dev) = input_device {
             if let (Ok(input_name), Ok(output_name)) =
                 (input_dev.name(), output_device.name()) {
@@ -104,7 +104,7 @@ pub fn input_stream_fn(
                             samples: chunk,
                         };
 
-                        // Log every 2 seconds
+                       
                         let mut last = last_log_clone.lock().unwrap();
                         if last.elapsed().as_secs() >= 2 {
                             log::info!("🎤 Input: Seq {} | Max: {} | {}",
@@ -215,7 +215,7 @@ pub fn output_stream_fn(
 
                     let is_silence = max_sample < 100;
 
-                    // Log every 2 seconds
+                   
                     let mut last = last_log_clone.lock().unwrap();
                     if last.elapsed().as_secs() >= 2 {
                         log::info!("🔊 Output: Buffer {} samples | Max: {} | {}",

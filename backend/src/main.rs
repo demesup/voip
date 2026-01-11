@@ -23,7 +23,7 @@ use std::io::BufReader;
 async fn main() -> std::io::Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    // Load TLS certificates
+   
     let mut cert_file = BufReader::new(File::open("cert.pem").expect("cert.pem not found. Run generate_cert.py first."));
     let mut key_file = BufReader::new(File::open("key.pem").expect("key.pem not found. Run generate_cert.py first."));
     let cert_chain = certs(&mut cert_file).expect("Failed to load certs").into_iter().map(Certificate).collect::<Vec<_>>();
@@ -35,10 +35,10 @@ async fn main() -> std::io::Result<()> {
 
     let call_manager = Arc::new(Mutex::new(CallManager::new()));
 
-    // Create UDP command channel
+   
     let (udp_tx, udp_rx) = mpsc::channel::<UdpCommand>(32);
 
-    // Spawn UDP audio task
+   
     let call_manager_clone = Arc::clone(&call_manager);
     log::info!("Spawning UDP audio task...");
     tokio::spawn(async move {
@@ -149,10 +149,10 @@ async fn user_heartbeat(
     
     let mut manager = call_manager.lock().await;
     
-    // Update heartbeat for this user
+   
     let user_exists = manager.update_heartbeat(user_id);
     
-    // Check for inactive users (timeout after 10 seconds of no heartbeat)
+   
     let _ = manager.disconnect_inactive_users(10);
     
     actix_web::HttpResponse::Ok().json(serde_json::json!({
